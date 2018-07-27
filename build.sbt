@@ -128,6 +128,17 @@ lazy val scalafixRules = project
     libraryDependencies += "com.github.xenoby" %% "scalafix-core" % V.scalafix
   )
 
+lazy val scalafixMetadiff = project
+  .in(file("scalafix/metadiff"))
+  .settings(
+    commonSettings,
+    publishableSettings,
+    moduleName := "metadiff",
+    libraryDependencies += "org.scalameta" %% "semanticdb" % V.scalameta,
+    libraryDependencies += "org.scalameta" %% "cli" % V.scalameta,
+    mainClass := Some("scala.meta.cli.Metadiff")
+  )
+
 lazy val scalafixTests = project
   .in(file("scalafix/tests"))
   .dependsOn(scalafixInput, scalafixRules)
