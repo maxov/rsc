@@ -28,6 +28,9 @@ object Settings {
           Some(settings)
       }
     }
-    loop(Settings(), true, args)
+    loop(Settings(), true, args).filter { settings =>
+      if (settings.paths.length != 2) reporter.out.println("Expected exactly two paths to diff")
+      settings.paths.length == 2
+    }
   }
 }

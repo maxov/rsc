@@ -136,6 +136,7 @@ lazy val scalafixMetadiff = project
     moduleName := "metadiff",
     libraryDependencies += "org.scalameta" %% "semanticdb" % V.scalameta,
     libraryDependencies += "org.scalameta" %% "cli" % V.scalameta,
+    libraryDependencies += "com.googlecode.java-diff-utils" % "diffutils" % "1.3.0",
     mainClass := Some("scala.meta.cli.Metadiff")
   )
 
