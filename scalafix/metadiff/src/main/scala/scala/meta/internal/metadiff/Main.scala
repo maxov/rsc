@@ -15,15 +15,22 @@ class Main(settings: Settings, reporter: Reporter) {
   private def collectPayloads(root: Path): Map[Path, s.TextDocuments] = {
     val builder = Map.newBuilder[Path, s.TextDocuments]
     Locator(root) { (path, payload) =>
-      builder += path -> payload
+      builder += root.relativize(path) -> payload
     }
     builder.result()
   }
 
-  private def mkDiff(nameFrom: String, nameTo: String, linesFrom: List[String], linesTo: List[String]): String = {
+  private def mkDiff(
+      nameFrom: String,
+      nameTo: String,
+      linesFrom: List[String],
+      linesTo: List[String]): String = {
     val origLines = linesFrom.asJava
     val patch = DiffUtils.diff(origLines, linesTo.asJava)
-    DiffUtils.generateUnifiedDiff(nameFrom, nameTo, origLines, patch, 5).asScala.mkString(EOL)
+    DiffUtils
+      .generateUnifiedDiff(nameFrom, nameTo, origLines, patch, 5)
+      .asScala
+      .mkString(EOL)
   }
 
   def process(): Boolean = {
@@ -37,7 +44,11 @@ class Main(settings: Settings, reporter: Reporter) {
         val payloadFrom = payloadsFrom(p).toProtoString
         val payloadTo = payloadsTo(p).toProtoString
         if (payloadFrom != payloadTo) {
-          val outDiff = mkDiff(p.toString, p.toString, payloadFrom.lines.toList, payloadTo.lines.toList)
+          val outDiff = mkDiff(
+            p.toString,
+            p.toString,
+            payloadFrom.lines.toList,
+            payloadTo.lines.toList)
           reporter.out.println(outDiff)
         }
       case Diff.Insert(p) =>

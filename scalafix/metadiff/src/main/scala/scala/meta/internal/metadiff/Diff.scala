@@ -13,20 +13,24 @@ object Diff {
     val cache = mutable.Map.empty[(List[T], List[T]), (Int, List[DiffElem[T]])]
     def loop(seqFrom: List[T], seqTo: List[T]): (Int, List[DiffElem[T]]) = {
       if (cache.contains((seqFrom, seqTo))) cache((seqFrom, seqTo))
-      (seqFrom, seqTo) match {
-        case (Nil, Nil) => (0, Nil)
-        case (Nil, seqTo) => (0, seqTo.map(Insert.apply))
-        case (seqFrom, Nil) => (0, seqFrom.map(Delete.apply))
-        case (elemFrom +: restFrom, elemTo +: restTo) if elemFrom == elemTo =>
-          val (restSameLen, restDiffSeq) = loop(restFrom, restTo)
-          (restSameLen + 1, Keep(elemFrom) +: restDiffSeq)
-        case (seqFrom, seqTo) =>
-          val diffIfInsert = loop(seqFrom, seqTo.tail)
-          val diffIfDelete = loop(seqFrom.tail, seqTo)
-          if (diffIfInsert._1 > diffIfDelete._1)
-            (diffIfInsert._1, Insert(seqTo.head) +: diffIfInsert._2)
-          else
-            (diffIfDelete._1, Delete(seqFrom.head) +: diffIfDelete._2)
+      else {
+        val result = (seqFrom, seqTo) match {
+          case (Nil, Nil) => (0, Nil)
+          case (Nil, seqTo) => (0, seqTo.map(Insert.apply))
+          case (seqFrom, Nil) => (0, seqFrom.map(Delete.apply))
+          case (elemFrom +: restFrom, elemTo +: restTo) if elemFrom == elemTo =>
+            val (restSameLen, restDiffSeq) = loop(restFrom, restTo)
+            (restSameLen + 1, Keep(elemFrom) +: restDiffSeq)
+          case (seqFrom, seqTo) =>
+            val diffIfInsert = loop(seqFrom, seqTo.tail)
+            val diffIfDelete = loop(seqFrom.tail, seqTo)
+            if (diffIfInsert._1 > diffIfDelete._1)
+              (diffIfInsert._1, Insert(seqTo.head) +: diffIfInsert._2)
+            else
+              (diffIfDelete._1, Delete(seqFrom.head) +: diffIfDelete._2)
+        }
+        cache((seqFrom, seqTo)) = result
+        result
       }
     }
     val (_, diffSeq) = loop(seqFrom, seqTo)

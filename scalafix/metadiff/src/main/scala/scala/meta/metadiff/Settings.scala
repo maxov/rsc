@@ -5,15 +5,15 @@ import java.nio.file.{Path, Paths}
 import scala.meta.cli.Reporter
 
 final case class Settings(
-  paths: List[Path] = List()
+    paths: List[Path] = List()
 )
 
 object Settings {
   def parse(args: List[String], reporter: Reporter): Option[Settings] = {
     def loop(
-      settings: Settings,
-      allowOptions: Boolean,
-      args: List[String]): Option[Settings] = {
+        settings: Settings,
+        allowOptions: Boolean,
+        args: List[String]): Option[Settings] = {
       args match {
         case "--" +: rest =>
           loop(settings, false, rest)
@@ -29,7 +29,8 @@ object Settings {
       }
     }
     loop(Settings(), true, args).filter { settings =>
-      if (settings.paths.length != 2) reporter.out.println("Expected exactly two paths to diff")
+      if (settings.paths.length != 2)
+        reporter.out.println("Expected exactly two paths to diff")
       settings.paths.length == 2
     }
   }
