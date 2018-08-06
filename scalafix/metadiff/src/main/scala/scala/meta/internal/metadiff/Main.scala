@@ -12,10 +12,12 @@ class Main(settings: Settings, reporter: Reporter) {
 
   private val EOL = System.lineSeparator()
 
-  private def collectPayloads(root: Path): Map[Path, s.TextDocuments] = {
-    val builder = Map.newBuilder[Path, s.TextDocuments]
+  private def collectPayloads(root: Path): Map[String, s.TextDocument] = {
+    val builder = Map.newBuilder[String, s.TextDocument]
     Locator(root) { (path, payload) =>
-      builder += root.relativize(path) -> payload
+      payload.documents foreach { doc =>
+        builder += doc.uri -> doc
+      }
     }
     builder.result()
   }
