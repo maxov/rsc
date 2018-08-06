@@ -72,6 +72,7 @@ lazy val core = project
   .settings(
     commonSettings,
     semanticdbSettings,
+    scalacOptions += s"-P:semanticdb:sourceroot:${sourceDirectory.value}",
     libraryDependencies += "org.scala-lang" % "scala-reflect" % V.scala,
     libraryDependencies += "org.scala-lang.modules" %% "scala-parser-combinators" % "1.0.4"
   )
@@ -82,6 +83,7 @@ lazy val corePure = project
   .settings(
     commonSettings,
     semanticdbSettings,
+    scalacOptions += s"-P:semanticdb:sourceroot:${sourceDirectory.value}",
     libraryDependencies += "org.scala-lang" % "scala-reflect" % V.scala,
     libraryDependencies += "org.scala-lang.modules" %% "scala-parser-combinators" % "1.0.4"
   )

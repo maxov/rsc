@@ -7,6 +7,7 @@ import scala.meta.internal.semanticdb.Locator
 import scala.meta.metadiff.Settings
 import scala.meta.internal.{semanticdb => s}
 import scala.collection.JavaConverters._
+import scalapb.GeneratedMessage
 
 class Main(settings: Settings, reporter: Reporter) {
 
@@ -23,16 +24,41 @@ class Main(settings: Settings, reporter: Reporter) {
   }
 
   private def mkDiff(
-      nameFrom: String,
-      nameTo: String,
       linesFrom: List[String],
-      linesTo: List[String]): String = {
+      linesTo: List[String]): Option[String] = {
     val origLines = linesFrom.asJava
     val patch = DiffUtils.diff(origLines, linesTo.asJava)
-    DiffUtils
-      .generateUnifiedDiff(nameFrom, nameTo, origLines, patch, 5)
-      .asScala
-      .mkString(EOL)
+    if (patch.getDeltas.isEmpty) None
+    else {
+      val diffStr = DiffUtils
+        .generateUnifiedDiff("", "", origLines, patch, 5)
+        .asScala
+        .drop(2)
+        .mkString(EOL)
+      Some(diffStr + EOL)
+    }
+  }
+
+  private def diffSemantic(
+      name: String,
+      docFrom: s.TextDocument,
+      docTo: s.TextDocument
+  ): Option[String] = {
+    def diffProtoSeq(f: s.TextDocument => Seq[GeneratedMessage]): List[String] =
+      Diff(f(docFrom).toList, f(docTo).toList).collect {
+        case Diff.Insert(msg) =>
+          mkDiff(List(), msg.toProtoString.lines.toList)
+        case Diff.Delete(msg) =>
+          mkDiff(msg.toProtoString.lines.toList, List())
+        case Diff.Edit(msgFrom, msgTo) =>
+          mkDiff(
+            msgFrom.toProtoString.lines.toList,
+            msgTo.toProtoString.lines.toList)
+      }.flatten
+    val diffs = diffProtoSeq(_.symbols) /*++ diffProtoSeq(_.occurrences)*/ ++ diffProtoSeq(
+      _.synthetics)
+    if (diffs.nonEmpty) Some(diffs.mkString)
+    else None
   }
 
   def process(): Boolean = {
@@ -41,17 +67,14 @@ class Main(settings: Settings, reporter: Reporter) {
     val payloadsTo = collectPayloads(rootTo)
     val pathsFrom = payloadsFrom.keys.toList.sorted
     val pathsTo = payloadsTo.keys.toList.sorted
-    Diff(pathsFrom, pathsTo) foreach {
+    Diff(pathsFrom, pathsTo, allowEdit = false) foreach {
       case Diff.Keep(p) =>
-        val payloadFrom = payloadsFrom(p).toProtoString
-        val payloadTo = payloadsTo(p).toProtoString
-        if (payloadFrom != payloadTo) {
-          val outDiff = mkDiff(
-            p.toString,
-            p.toString,
-            payloadFrom.lines.toList,
-            payloadTo.lines.toList)
-          reporter.out.println(outDiff)
+        val payloadFrom = payloadsFrom(p)
+        val payloadTo = payloadsTo(p)
+        diffSemantic(p, payloadFrom, payloadTo).foreach { d =>
+          reporter.out.println(s"--- $p")
+          reporter.out.println(s"+++ $p")
+          reporter.out.print(d)
         }
       case Diff.Insert(p) =>
         reporter.out.println("---")
@@ -59,6 +82,7 @@ class Main(settings: Settings, reporter: Reporter) {
       case Diff.Delete(p) =>
         reporter.out.println(s"--- $p")
         reporter.out.println(s"+++")
+      case Diff.Edit(_, _) => sys.error("unexpected edit diff")
     }
     true
   }
