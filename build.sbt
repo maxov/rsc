@@ -76,6 +76,16 @@ lazy val core = project
     libraryDependencies += "org.scala-lang.modules" %% "scala-parser-combinators" % "1.0.4"
   )
 
+lazy val corePure = project
+  .in(file("examples/core-pure"))
+  .dependsOn(function)
+  .settings(
+    commonSettings,
+    semanticdbSettings,
+    libraryDependencies += "org.scala-lang" % "scala-reflect" % V.scala,
+    libraryDependencies += "org.scala-lang.modules" %% "scala-parser-combinators" % "1.0.4"
+  )
+
 lazy val function = project
   .in(file("examples/function"))
   .settings(commonSettings)
