@@ -2,12 +2,12 @@ package scala.meta.internal.metadiff
 
 import difflib.DiffUtils
 import java.nio.file.Path
+import java.util.regex.Pattern
 import scala.meta.cli._
 import scala.meta.internal.semanticdb.Locator
 import scala.meta.metadiff.Settings
 import scala.meta.internal.{semanticdb => s}
 import scala.collection.JavaConverters._
-import scalapb.GeneratedMessage
 
 class Main(settings: Settings, reporter: Reporter) {
 
@@ -23,7 +23,7 @@ class Main(settings: Settings, reporter: Reporter) {
     builder.result()
   }
 
-  private def mkDiff(
+  private def diffStrSeq(
       linesFrom: List[String],
       linesTo: List[String]): Option[String] = {
     val origLines = linesFrom.asJava
@@ -31,58 +31,113 @@ class Main(settings: Settings, reporter: Reporter) {
     if (patch.getDeltas.isEmpty) None
     else {
       val diffStr = DiffUtils
-        .generateUnifiedDiff("", "", origLines, patch, 5)
+        .generateUnifiedDiff("", "", origLines, patch, 1000)
         .asScala
-        .drop(2)
+        .drop(3)
         .mkString(EOL)
       Some(diffStr + EOL)
     }
   }
 
-  private def diffSemantic(
-      name: String,
+  private def diffName(name: String, diff: Option[String]): Option[String] =
+    diff.map { d =>
+      s"$name:$EOL$d"
+    }
+
+  private def diffObj[T](objFrom: T, objTo: T): Option[String] = {
+    if (objFrom == objTo) None
+    else
+      Some(
+        s"-$objFrom" + EOL +
+          s"+$objFrom" + EOL
+      )
+  }
+
+  private def diffEntire(diff: Option[String], add: Boolean): Option[String] =
+    diff.map { d =>
+      val startChar = if (add) '+' else '-'
+      val sb = new StringBuilder
+      d.split(Pattern.quote(EOL)).foreach { line =>
+        sb += startChar
+        sb ++= line
+        sb ++= EOL
+      }
+      sb.toString()
+    }
+
+  private def diffCombine(diffs: Option[String]*): Option[String] =
+    diffs.flatten match {
+      case Seq() => None
+      case s => Some(s.mkString)
+    }
+
+  private def diffSymInfo(
+      infoFrom: s.SymbolInformation,
+      infoTo: s.SymbolInformation): Option[String] =
+    diffStrSeq(
+      infoFrom.toProtoString.lines.toList,
+      infoTo.toProtoString.lines.toList)
+
+  private def diffDocument(
       docFrom: s.TextDocument,
-      docTo: s.TextDocument
-  ): Option[String] = {
-    def diffProtoSeq(f: s.TextDocument => Seq[GeneratedMessage]): List[String] =
-      Diff(f(docFrom).toList, f(docTo).toList).collect {
-        case Diff.Insert(msg) =>
-          mkDiff(List(), msg.toProtoString.lines.toList)
-        case Diff.Delete(msg) =>
-          mkDiff(msg.toProtoString.lines.toList, List())
-        case Diff.Edit(msgFrom, msgTo) =>
-          mkDiff(
-            msgFrom.toProtoString.lines.toList,
-            msgTo.toProtoString.lines.toList)
-      }.flatten
-    val diffs = diffProtoSeq(_.symbols) /*++ diffProtoSeq(_.occurrences)*/ ++ diffProtoSeq(
-      _.synthetics)
-    if (diffs.nonEmpty) Some(diffs.mkString)
-    else None
+      docTo: s.TextDocument): Option[String] = {
+    val diffSymbols = {
+      val symsFrom = docFrom.symbols.map(s => s.symbol -> s).toMap
+      val symsTo = docTo.symbols.map(s => s.symbol -> s).toMap
+      val orderDiff = diffStrSeq(
+        docFrom.symbols.map(_.symbol).toList,
+        docTo.symbols.map(_.symbol).toList)
+      val restDiff = orderDiff.flatMap { ord =>
+        val infoDiffs = ord.lines.map { line =>
+          val firstChar = line.charAt(0)
+          val sym = line.substring(1)
+          val symDiff =
+            if (symsFrom.contains(sym) && symsTo.contains(sym))
+              diffSymInfo(symsFrom(sym), symsTo(sym))
+            else if (symsFrom.contains(sym))
+              diffEntire(Some(symsFrom(sym).toProtoString), add = false)
+            else diffEntire(Some(symsTo(sym).toProtoString), add = true)
+          diffName(s"symbol '$sym'", symDiff)
+        }.toSeq
+        diffCombine(infoDiffs: _*)
+      }
+      diffCombine(
+        diffName("symbol order", orderDiff),
+        restDiff
+      )
+    }
+    diffCombine(
+      diffName("schema", diffObj(docFrom.schema, docTo.schema)),
+      diffName("language", diffObj(docFrom.language, docTo.language)),
+      diffSymbols
+    )
   }
 
   def process(): Boolean = {
     val List(rootFrom, rootTo) = settings.paths
     val payloadsFrom = collectPayloads(rootFrom)
     val payloadsTo = collectPayloads(rootTo)
-    val pathsFrom = payloadsFrom.keys.toList.sorted
-    val pathsTo = payloadsTo.keys.toList.sorted
-    Diff(pathsFrom, pathsTo, allowEdit = false) foreach {
-      case Diff.Keep(p) =>
-        val payloadFrom = payloadsFrom(p)
-        val payloadTo = payloadsTo(p)
-        diffSemantic(p, payloadFrom, payloadTo).foreach { d =>
-          reporter.out.println(s"--- $p")
-          reporter.out.println(s"+++ $p")
-          reporter.out.print(d)
+    val pathsFrom = payloadsFrom.keySet
+    val pathsTo = payloadsTo.keySet
+    val pathsShared = pathsFrom & pathsTo
+    (pathsFrom | pathsTo).toSeq.sorted foreach { path =>
+      if (pathsShared(path)) {
+        val payloadFrom = payloadsFrom(path)
+        val payloadTo = payloadsTo(path)
+        diffDocument(payloadFrom, payloadTo) match {
+          case Some(s) =>
+            reporter.out.println(s"--- $path")
+            reporter.out.println(s"+++ $path")
+            reporter.out.print(s)
+          case None =>
         }
-      case Diff.Insert(p) =>
-        reporter.out.println("---")
-        reporter.out.println(s"+++ $p")
-      case Diff.Delete(p) =>
-        reporter.out.println(s"--- $p")
+      } else if (pathsFrom(path)) {
+        reporter.out.println(s"--- $path")
         reporter.out.println(s"+++")
-      case Diff.Edit(_, _) => sys.error("unexpected edit diff")
+      } else if (pathsTo(path)) {
+        reporter.out.println("---")
+        reporter.out.println(s"+++ $path")
+      }
     }
     true
   }
