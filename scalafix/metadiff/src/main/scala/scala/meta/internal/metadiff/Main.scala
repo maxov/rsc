@@ -1,17 +1,13 @@
 package scala.meta.internal.metadiff
 
-import difflib.DiffUtils
 import java.nio.file.Path
-import java.util.regex.Pattern
 import scala.meta.cli._
 import scala.meta.internal.semanticdb.Locator
 import scala.meta.metadiff.Settings
 import scala.meta.internal.{semanticdb => s}
-import scala.collection.JavaConverters._
+import scala.meta.internal.metadiff.diff._
 
 class Main(settings: Settings, reporter: Reporter) {
-
-  private val EOL = System.lineSeparator()
 
   private def collectPayloads(root: Path): Map[String, s.TextDocument] = {
     val builder = Map.newBuilder[String, s.TextDocument]
@@ -23,93 +19,101 @@ class Main(settings: Settings, reporter: Reporter) {
     builder.result()
   }
 
-  private def diffStrSeq(
-      linesFrom: List[String],
-      linesTo: List[String]): Option[String] = {
-    val origLines = linesFrom.asJava
-    val patch = DiffUtils.diff(origLines, linesTo.asJava)
-    if (patch.getDeltas.isEmpty) None
-    else {
-      val diffStr = DiffUtils
-        .generateUnifiedDiff("", "", origLines, patch, 1000)
-        .asScala
-        .drop(3)
-        .mkString(EOL)
-      Some(diffStr + EOL)
-    }
-  }
-
-  private def diffName(name: String, diff: Option[String]): Option[String] =
-    diff.map { d =>
-      s"$name:$EOL$d"
-    }
-
-  private def diffObj[T](objFrom: T, objTo: T): Option[String] = {
-    if (objFrom == objTo) None
-    else
-      Some(
-        s"-$objFrom" + EOL +
-          s"+$objFrom" + EOL
-      )
-  }
-
-  private def diffEntire(diff: Option[String], add: Boolean): Option[String] =
-    diff.map { d =>
-      val startChar = if (add) '+' else '-'
-      val sb = new StringBuilder
-      d.split(Pattern.quote(EOL)).foreach { line =>
-        sb += startChar
-        sb ++= line
-        sb ++= EOL
-      }
-      sb.toString()
-    }
-
-  private def diffCombine(diffs: Option[String]*): Option[String] =
-    diffs.flatten match {
-      case Seq() => None
-      case s => Some(s.mkString)
-    }
-
-  private def diffSymInfo(
-      infoFrom: s.SymbolInformation,
-      infoTo: s.SymbolInformation): Option[String] =
-    diffStrSeq(
-      infoFrom.toProtoString.lines.toList,
-      infoTo.toProtoString.lines.toList)
-
   private def diffDocument(
       docFrom: s.TextDocument,
-      docTo: s.TextDocument): Option[String] = {
-    val diffSymbols = {
-      val symsFrom = docFrom.symbols.map(s => s.symbol -> s).toMap
-      val symsTo = docTo.symbols.map(s => s.symbol -> s).toMap
-      val orderDiff = diffStrSeq(
-        docFrom.symbols.map(_.symbol).toList,
-        docTo.symbols.map(_.symbol).toList)
-      val restDiff = orderDiff.flatMap { ord =>
-        val infoDiffs = ord.lines.map { line =>
-          val firstChar = line.charAt(0)
-          val sym = line.substring(1)
-          val symDiff =
-            if (symsFrom.contains(sym) && symsTo.contains(sym))
-              diffSymInfo(symsFrom(sym), symsTo(sym))
-            else if (symsFrom.contains(sym))
-              diffEntire(Some(symsFrom(sym).toProtoString), add = false)
-            else diffEntire(Some(symsTo(sym).toProtoString), add = true)
-          diffName(s"symbol '$sym'", symDiff)
-        }.toSeq
-        diffCombine(infoDiffs: _*)
-      }
-      diffCombine(
-        diffName("symbol order", orderDiff),
-        restDiff
-      )
-    }
-    diffCombine(
-      diffName("schema", diffObj(docFrom.schema, docTo.schema)),
-      diffName("language", diffObj(docFrom.language, docTo.language)),
-      diffSymbols
+      docTo: s.TextDocument): Diff = {
+
+    val diffSymbols =
+      if (settings.compareSymbols) {
+
+        val symsFrom = docFrom.symbols.map(s => s.symbol -> s).toMap
+        val symsTo = docTo.symbols.map(s => s.symbol -> s).toMap
+
+        val orderDiff = diffLines(
+          docFrom.symbols.map(_.symbol).toList,
+          docTo.symbols.map(_.symbol).toList)
+
+        val fullDiff = diffConcat(
+          orderDiff.extractLines.getOrElse(docFrom.symbols.map(_.symbol)).map {
+            sym =>
+              val symDiff =
+                if (symsFrom.contains(sym) && symsTo.contains(sym))
+                  diffLines(symsFrom(sym).toProtoString.lines, symsTo(sym).toProtoString.lines)
+                else if (symsFrom.contains(sym))
+                  diffPatch('-', Some(symsFrom(sym).toProtoString))
+                else
+                  diffPatch('+', Some(symsTo(sym).toProtoString))
+              symDiff.name(s"symbol '$sym'")
+          }
+        )
+
+        diffConcat(
+          if (settings.compareOrder) orderDiff.name("symbol info order")
+          else None,
+          fullDiff
+        )
+      } else None
+
+    val diffOccs =
+      if (settings.compareOccurrences) {
+
+        val occsFrom = docFrom.occurrences.groupBy(_.symbol)
+        val occsTo = docTo.occurrences.groupBy(_.symbol)
+
+        val occsOrderFrom =
+          if (settings.compareOrder) docFrom.occurrences
+          else docFrom.occurrences.sortBy(_.range)
+        val occsOrderTo =
+          if (settings.compareOrder) docTo.occurrences
+          else docTo.occurrences.sortBy(_.range)
+
+        val orderDiff = diffLines(
+          occsOrderFrom.map(occ => occ.symbol + " " + occ.role).toList,
+          occsOrderTo.map(occ => occ.symbol + " " + occ.role).toList
+        )
+        def display(occ: s.SymbolOccurrence): String =
+          s"${occ.role} ${occ.range.str}"
+        def displayEOL(occ: s.SymbolOccurrence): String =
+          s"${occ.role} ${occ.range.str}$EOL"
+
+        val fullDiff = diffConcat(
+          orderDiff.extractLines
+            .map { lines =>
+              lines.map { line =>
+                line.substring(0, line.lastIndexOf(' '))
+              }.distinct
+            }
+            .getOrElse(occsOrderFrom.map(_.symbol).distinct)
+            .map { occ =>
+              val occDiff =
+                if (occsFrom.contains(occ) && occsTo.contains(occ))
+                  diffLines(
+                    occsFrom(occ).map(display),
+                    occsTo(occ).map(display))
+                else if (occsFrom.contains(occ))
+                  diffPatch('-', Some(occsFrom(occ).map(displayEOL).mkString))
+                else
+                  diffPatch('-', Some(occsTo(occ).map(displayEOL).mkString))
+              occDiff.name(s"occurrence symbol '$occ'")
+            }
+        )
+
+        diffConcat(
+          orderDiff.name("occurrence order"),
+          fullDiff
+        )
+      } else None
+
+    val diffSynths =
+      if (settings.compareSynthetics) None
+      else None
+
+    diffConcat(
+      diffObj(docFrom.schema, docTo.schema).name("schema"),
+      diffObj(docFrom.language, docTo.language).name("language"),
+      diffSymbols,
+      diffOccs,
+      diffSynths
     )
   }
 
@@ -124,13 +128,8 @@ class Main(settings: Settings, reporter: Reporter) {
       if (pathsShared(path)) {
         val payloadFrom = payloadsFrom(path)
         val payloadTo = payloadsTo(path)
-        diffDocument(payloadFrom, payloadTo) match {
-          case Some(s) =>
-            reporter.out.println(s"--- $path")
-            reporter.out.println(s"+++ $path")
-            reporter.out.print(s)
-          case None =>
-        }
+        val diff = diffHeader(path, path, diffDocument(payloadFrom, payloadTo))
+        diff.foreach(reporter.out.print)
       } else if (pathsFrom(path)) {
         reporter.out.println(s"--- $path")
         reporter.out.println(s"+++")
@@ -143,5 +142,13 @@ class Main(settings: Settings, reporter: Reporter) {
   }
 
   implicit val pathOrdering: Ordering[Path] = Ordering.by(_.toString)
+  implicit val rangeOrdering: Ordering[Option[s.Range]] = Ordering.by(
+    _.map(r => (r.startLine, r.startCharacter, r.endLine, r.endCharacter)))
+
+  implicit class OptRangeOps(rOpt: Option[s.Range]) {
+    def str: String = rOpt.fold("") { r =>
+      s"${r.startLine}:${r.startCharacter}-${r.endLine}:${r.endCharacter}"
+    }
+  }
 
 }
