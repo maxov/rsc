@@ -105,8 +105,11 @@ class Main(settings: Settings, reporter: Reporter) {
       } else None
 
     val diffSynths =
-      if (settings.compareSynthetics) None
-      else None
+      if (settings.compareSynthetics) {
+        val linesSynthsFrom = s.TextDocument(synthetics = docFrom.synthetics).toProtoString.lines
+        val linesSynthsTo = s.TextDocument(synthetics = docTo.synthetics).toProtoString.lines
+        diffLines(linesSynthsFrom, linesSynthsTo, contextSize = 5).name("synthetics")
+      } else None
 
     diffConcat(
       diffObj(docFrom.schema, docTo.schema).name("schema"),

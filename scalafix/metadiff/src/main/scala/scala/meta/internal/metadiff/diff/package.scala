@@ -33,13 +33,13 @@ package object diff {
 
   }
 
-  def diffLines(linesFrom: TraversableOnce[String], linesTo: TraversableOnce[String]): Diff = {
+  def diffLines(linesFrom: TraversableOnce[String], linesTo: TraversableOnce[String], contextSize: Int = 1000000): Diff = {
     val origLines = linesFrom.toSeq.asJava
     val patch = DiffUtils.diff(origLines, linesTo.toSeq.asJava)
     if (patch.getDeltas.isEmpty) None
     else {
       val diffStr = DiffUtils
-        .generateUnifiedDiff("", "", origLines, patch, 1000000)
+        .generateUnifiedDiff("", "", origLines, patch, contextSize)
         .asScala
         .drop(3)
         .mkString(EOL)
