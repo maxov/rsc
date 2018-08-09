@@ -33,7 +33,7 @@ class Main(settings: Settings, reporter: Reporter) {
       val newDoc = new PatchApplier(inputFrom, inputTo, classesToPayload._2, patch).apply()
       val outputPath = settings.classesDest.get.resolve(settings.classesTo.get.relativize(classesToPayload._1))
       Files.createDirectories(outputPath.getParent)
-      newDoc.writeTo(new FileOutputStream(outputPath.toFile))
+      s.TextDocuments(Seq(newDoc)).writeTo(new FileOutputStream(outputPath.toFile))
       println(s"Wrote $outputPath")
     }
     return true

@@ -11,7 +11,8 @@ class PatchApplier(inputFrom: Input, inputTo: Input, dbTo: s.TextDocument, patch
 
     def replaceTree(tree: s.Tree): s.Tree = tree match {
       case tree: s.ApplyTree => tree.copy(
-        fn = replaceTree(tree.fn)
+        fn = replaceTree(tree.fn),
+        args = tree.args.map(replaceTree)
       )
       case tree: s.TypeApplyTree => tree.copy(
         fn = replaceTree(tree.fn)
@@ -46,6 +47,7 @@ class PatchApplier(inputFrom: Input, inputTo: Input, dbTo: s.TextDocument, patch
       val lastAvailablePos = patch.takeWhile {
         case (p, _) => p < pos.start
       }.lastOption
+//      println(lastAvailablePos)
       lastAvailablePos match {
         case None => range
         case Some((_, offset)) => Position.Range(inputFrom, pos.start - offset, pos.end - offset).range
