@@ -141,18 +141,6 @@ lazy val scalafixRules = project
     libraryDependencies += "com.github.xenoby" %% "scalafix-core" % V.scalafix
   )
 
-lazy val scalafixMetadiff = project
-  .in(file("scalafix/metadiff"))
-  .settings(
-    commonSettings,
-    publishableSettings,
-    moduleName := "metadiff",
-    libraryDependencies += "org.scalameta" %% "semanticdb" % V.scalameta,
-    libraryDependencies += "org.scalameta" %% "cli" % V.scalameta,
-    libraryDependencies += "com.googlecode.java-diff-utils" % "diffutils" % "1.3.0",
-    mainClass := Some("scala.meta.cli.Metadiff")
-  )
-
 lazy val returnTypeReconciler = project
   .in(file("scalafix/return-type-reconciler"))
   .settings(
