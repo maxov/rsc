@@ -81,6 +81,7 @@ lazy val corePure = project
   .in(file("examples/core-pure"))
   .dependsOn(function)
   .settings(
+    moduleName := "core-pure",
     commonSettings,
     semanticdbSettings,
     scalacOptions += s"-P:semanticdb:sourceroot:${sourceDirectory.value}",
@@ -160,6 +161,7 @@ lazy val returnTypeReconciler = project
     moduleName := "return-type-reconciler",
     libraryDependencies += "org.scalameta" %% "semanticdb" % V.scalameta,
     libraryDependencies += "org.scalameta" %% "cli" % V.scalameta,
+    libraryDependencies += "org.scalameta" %% "scalameta" % V.scalameta,
     mainClass := Some("scala.meta.cli.ReturnTypeReconciler")
   )
 
