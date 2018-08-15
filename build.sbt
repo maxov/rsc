@@ -2,7 +2,7 @@ lazy val V = new {
   val asm = "6.0"
   val scala = computeScalaVersionFromTravisYml("2.11")
   val scalafix = computeScalafixVersionFromBinScalafix()
-  val scalameta = "4.0.0-M7-16-21ef75d6-SNAPSHOT"
+  val scalameta = "4.0.0-M8-2-6b867617"
   val scalatest = "3.0.5"
 }
 
@@ -147,11 +147,27 @@ lazy val returnTypeReconciler = project
     commonSettings,
     publishableSettings,
     moduleName := "return-type-reconciler",
+    resolvers += Resolver.mavenLocal,
     libraryDependencies += "org.scalameta" %% "semanticdb" % V.scalameta,
     libraryDependencies += "org.scalameta" %% "cli" % V.scalameta,
     libraryDependencies += "org.scalameta" %% "scalameta" % V.scalameta,
     mainClass := Some("scala.meta.cli.ReturnTypeReconciler")
   )
+
+lazy val reconcilerBig = project
+  .in(file("reconciler-big"))
+  .settings(
+    commonSettings,
+    publishableSettings,
+    moduleName := "reconcilerBig",
+    resolvers += Resolver.mavenLocal,
+    libraryDependencies += "org.scalameta" %% "semanticdb" % V.scalameta,
+    libraryDependencies += "org.scalameta" %% "cli" % V.scalameta,
+    libraryDependencies += "org.scalameta" %% "scalameta" % V.scalameta,
+    libraryDependencies += "org.scalameta" %% "metadiff" % V.scalameta,
+    mainClass := Some("scala.meta.cli.ReturnTypeReconciler")
+  )
+  .dependsOn(returnTypeReconciler)
 
 lazy val scalafixTests = project
   .in(file("scalafix/tests"))
@@ -226,7 +242,8 @@ lazy val commonSettings = Seq(
   baseDirectory in Test := (baseDirectory in ThisBuild).value,
   cancelable := true,
   resolvers += Opts.resolver.sonatypeReleases,
-  resolvers += Opts.resolver.sonatypeSnapshots
+  resolvers += Opts.resolver.sonatypeSnapshots,
+  resolvers += Resolver.mavenLocal
 )
 
 lazy val publishableSettings = Seq(
