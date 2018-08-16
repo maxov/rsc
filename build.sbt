@@ -165,7 +165,8 @@ lazy val reconcilerBig = project
     libraryDependencies += "org.scalameta" %% "cli" % V.scalameta,
     libraryDependencies += "org.scalameta" %% "scalameta" % V.scalameta,
     libraryDependencies += "org.scalameta" %% "metadiff" % V.scalameta,
-    mainClass := Some("scala.meta.cli.ReturnTypeReconciler")
+    libraryDependencies += "org.scalameta" %% "metap" % V.scalameta,
+    mainClass := Some("scala.meta.cli.ReconcilerBig")
   )
   .dependsOn(returnTypeReconciler)
 

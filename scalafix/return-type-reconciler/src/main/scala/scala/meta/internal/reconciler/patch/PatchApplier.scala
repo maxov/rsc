@@ -32,6 +32,7 @@ class PatchApplier(inputFrom: Input, inputTo: Input, dbTo: s.TextDocument, patch
         )
       case tree: s.OriginalTree =>
         tree.copy(range = tree.range.map(f))
+      case s.NoTree => s.NoTree
     }
 
     synth.copy(

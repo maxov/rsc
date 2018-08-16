@@ -5,20 +5,31 @@ import java.nio.file.{Files, Path}
 import scala.meta.cli.Reporter
 import scala.meta.inputs._
 import scala.meta.internal.reconciler.patch.{PatchApplier, PatchDetector}
-import scala.meta.internal.semanticdb.Locator
+import scala.meta.internal.semanticdb.{Locator, TextDocuments}
 import scala.meta.reconciler.Settings
 import scala.meta.internal.{semanticdb => s}
 
 class Main(settings: Settings, reporter: Reporter) {
 
+  private def merge(doc1: s.TextDocument, doc2: s.TextDocument): s.TextDocument = {
+    doc1.copy(
+      symbols = doc1.symbols ++ doc2.symbols,
+      occurrences = doc1.occurrences ++ doc2.occurrences,
+      diagnostics = doc1.diagnostics ++ doc2.diagnostics,
+      synthetics = doc1.synthetics ++ doc2.synthetics
+    )
+  }
+
   private def collectPayloads(root: Path): Map[String, (Path, s.TextDocument)] = {
-    val builder = Map.newBuilder[String, (Path, s.TextDocument)]
+    val builder = List.newBuilder[(String, Path, s.TextDocument)]
     Locator(root) { (path, payload) =>
-      payload.documents foreach { doc =>
-        builder += doc.uri -> (path -> doc)
+      payload.documents.foreach { doc =>
+        builder += ((doc.uri, path, doc))
       }
     }
-    builder.result()
+    builder.result().groupBy(_._1).map {
+      case (s, opts) => s -> (opts.head._2, opts.map(_._3).reduce(merge))
+    }
   }
 
   def process(): Boolean = {
